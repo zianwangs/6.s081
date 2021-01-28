@@ -19,9 +19,26 @@ extern void forkret(void);
 static void wakeup1(struct proc *chan);
 static void freeproc(struct proc *p);
 
+
 extern char trampoline[]; // trampoline.S
 
 // initialize the proc table at boot time.
+//
+
+int queryFreeProcs(uint64 addr) {
+    uint64 num = 0;
+    struct proc * p = proc;
+    struct proc * my = myproc();
+    for(; p < &proc[NPROC]; ++p) {
+        num += p->state != UNUSED;
+    }
+    if (copyout(my->pagetable, addr, (char *)&num, sizeof(uint64)))
+        return -1;
+    return 0;
+
+}
+
+
 void
 procinit(void)
 {
@@ -126,6 +143,7 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  p->traced = 0;
 
   return p;
 }
@@ -150,6 +168,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->traced = 0;
 }
 
 // Create a user page table for a given process,
@@ -230,6 +249,8 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  p->traced = 0;
+
   release(&p->lock);
 }
 
@@ -292,7 +313,7 @@ fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
-
+  np->traced = p->traced;
   np->state = RUNNABLE;
 
   release(&np->lock);

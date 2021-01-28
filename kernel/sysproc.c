@@ -95,3 +95,24 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64 sys_trace(void) {
+    int n;
+    if(argint(0, &n) < 0)
+        return -1;
+    myproc()->traced = n;
+    return 0;
+}
+
+uint64 sys_sysinfo(void) {
+    uint64 s;
+    if (argaddr(0, &s) < 0)
+        return -1;
+    if (queryFreeMem(s) < 0)
+        return -1;
+    s += sizeof(uint64);
+    if (queryFreeProcs(s) < 0)
+        return -1;
+
+    return 0;
+}

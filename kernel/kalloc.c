@@ -8,6 +8,7 @@
 #include "spinlock.h"
 #include "riscv.h"
 #include "defs.h"
+#include "proc.h"
 
 void freerange(void *pa_start, void *pa_end);
 
@@ -22,6 +23,19 @@ struct {
   struct spinlock lock;
   struct run *freelist;
 } kmem;
+
+int queryFreeMem(uint64 addr) {
+    uint64 remains = 0;
+    struct proc * p = myproc();
+    struct run * mover = kmem.freelist;
+    while (mover != 0) {
+        mover = mover->next;
+        remains += PGSIZE;
+    }
+    if (copyout(p->pagetable, addr, (char *)&remains, sizeof(uint64)))
+        return -1;
+    return 0;
+}
 
 void
 kinit()
