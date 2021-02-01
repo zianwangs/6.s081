@@ -46,9 +46,15 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
+  struct proc * p = myproc();
+  addr = p->sz;
+  if (n > 0 && addr + n > PLIC) return -1; 
   if(growproc(n) < 0)
     return -1;
+  if (n > 0)
+      mapinflate(p->pagetable, p->kpg, addr, addr + n);
+  else if (n < 0)
+      mapshrink(p->pagetable, p->kpg, addr, addr + n);
   return addr;
 }
 

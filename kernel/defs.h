@@ -178,7 +178,14 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
-
+void            vmprint(pagetable_t);
+pagetable_t     copykpg();
+void            freekpg(pagetable_t, int level);
+uint64          va2pa(pagetable_t, uint64);
+void            addmapping(pagetable_t src, pagetable_t dst, uint64 va, int level);
+void            mapinflate(pagetable_t src, pagetable_t dst, uint64 oldva, uint64 newva);
+void            mapshrink(pagetable_t src, pagetable_t dst, uint64 oldva, uint64 newva);
+void            freeUvmInKpg(pagetable_t dst, uint64 va);
 // plic.c
 void            plicinit(void);
 void            plicinithart(void);
@@ -193,7 +200,9 @@ void            virtio_disk_intr(void);
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
 
-
+// vmcopy.c
+int             copyin_new(pagetable_t, char *, uint64, uint64);
+int             copyinstr_new(pagetable_t, char *, uint64, uint64);
 
 // stats.c
 void            statsinit(void);
@@ -222,4 +231,9 @@ void            sockclose(struct sock *);
 int             sockread(struct sock *, uint64, int);
 int             sockwrite(struct sock *, uint64, int);
 void            sockrecvudp(struct mbuf*, uint32, uint16, uint16);
+
+
+
+
+
 #endif

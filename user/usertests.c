@@ -2034,10 +2034,13 @@ sbrkmuch(char *s)
     exit(1);
   }
 
+
   // touch each page to make sure it exists.
   char *eee = sbrk(0);
-  for(char *pp = a; pp < eee; pp += 4096)
+  
+  for(char *pp = a; pp < eee; pp += 4096) {
     *pp = 1;
+  }
 
   lastaddr = (char*) (BIG-1);
   *lastaddr = 99;
@@ -2046,14 +2049,20 @@ sbrkmuch(char *s)
   a = sbrk(0);
   c = sbrk(-PGSIZE);
   if(c == (char*)0xffffffffffffffffL){
+
     printf("%s: sbrk could not deallocate\n", s);
     exit(1);
   }
+
+
+  
   c = sbrk(0);
   if(c != a - PGSIZE){
     printf("%s: sbrk deallocation produced wrong address, a %x c %x\n", a, c);
     exit(1);
   }
+
+
 
   // can one re-allocate that page?
   a = sbrk(0);
@@ -2062,11 +2071,16 @@ sbrkmuch(char *s)
     printf("%s: sbrk re-allocation failed, a %x c %x\n", a, c);
     exit(1);
   }
+
+  
   if(*lastaddr == 99){
     // should be zero
     printf("%s: sbrk de-allocation didn't really deallocate\n", s);
     exit(1);
   }
+
+
+  
 
   a = sbrk(0);
   c = sbrk(-(sbrk(0) - oldbrk));
@@ -2074,6 +2088,8 @@ sbrkmuch(char *s)
     printf("%s: sbrk downsize failed, a %x c %x\n", a, c);
     exit(1);
   }
+
+
 }
 
 // can we read the kernel's memory?
