@@ -60,6 +60,10 @@ sys_sleep(void)
 
   if(argint(0, &n) < 0)
     return -1;
+    
+  backtrace();
+
+
   acquire(&tickslock);
   ticks0 = ticks;
   while(ticks - ticks0 < n){
@@ -94,4 +98,33 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64 sys_sigalarm(void) {
+    int time;
+    uint64 addr;
+    struct proc * p = myproc();
+    if (argint(0, &time) < 0)
+        return -1;
+    if (argaddr(1, &addr) < 0)
+        return -1;
+    p->interval = time;
+    p->func = addr;
+    return 0;
+}
+
+uint64 sys_sigreturn(void) {
+    struct proc * p = myproc();
+    p->trapframe->epc = p->rip;
+    p->trapframe->ra = p->ra;
+    p->trapframe->s0 = p->s0;
+    p->trapframe->sp = p->sp;
+    p->trapframe->a0 = p->a0;
+    p->trapframe->a1 = p->a1;
+    p->trapframe->a2 = p->a2;
+    p->trapframe->a3 = p->a3;
+    p->trapframe->a4 = p->a4;
+    p->trapframe->a5 = p->a5;
+    p->locked = 0;
+    return 0;
 }

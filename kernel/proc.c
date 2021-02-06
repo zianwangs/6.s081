@@ -126,6 +126,12 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  
+
+  p->interval = 0;
+  p->func = 0;
+  p->passage = 0;
+
 
   return p;
 }
@@ -150,6 +156,9 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->interval = 0;
+  p->func = 0;
+  p->passage = 0;
 }
 
 // Create a user page table for a given process,
