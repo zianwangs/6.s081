@@ -188,7 +188,7 @@ void            virtio_disk_intr(void);
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
 void increase(int idx);
 
-void decrease(int idx); 
+int decrease(int idx); 
 
 int get(int idx);
 

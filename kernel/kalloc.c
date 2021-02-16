@@ -54,9 +54,9 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
   int idx = PA2IDX((uint64)pa);
-  decrease(idx);
-  if (get(idx)) return;
+  if (decrease(idx)) return;
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
@@ -78,6 +78,7 @@ kalloc(void)
   acquire(&kmem.lock);
   r = kmem.freelist;
   if(r) {
+      if (ref[PA2IDX((uint64)r)] != 0) panic("kalloc  not free");
     ref[PA2IDX((uint64)r)] = 1;
     kmem.freelist = r->next;
   }
@@ -105,11 +106,13 @@ void increase(int idx) {
     release(&kmem.lock);
 }
 
-void decrease(int idx) {
+int decrease(int idx) {
+    int c;
     acquire(&kmem.lock);
     if (ref[idx] < 1) panic("decrease error");
-    --ref[idx];
+    c = --ref[idx];
     release(&kmem.lock);
+    return c;
 }
 
 int get(int idx) {
