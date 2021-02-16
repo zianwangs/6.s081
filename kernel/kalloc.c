@@ -13,7 +13,9 @@ void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
-
+ 
+signed char ref[32768];
+struct spinlock rlock;
 struct run {
   struct run *next;
 };
@@ -27,7 +29,9 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  memset(ref, 1, sizeof ref);
   freerange(end, (void*)PHYSTOP);
+  initlock(&rlock, "ref");
 }
 
 void
@@ -50,7 +54,9 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
-
+  int idx = PA2IDX((uint64)pa);
+  decrease(idx);
+  if (get(idx)) return;
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
@@ -69,14 +75,48 @@ void *
 kalloc(void)
 {
   struct run *r;
-
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r) {
+    ref[PA2IDX((uint64)r)] = 1;
     kmem.freelist = r->next;
+  }
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+int count() {
+    int ans = 0;
+    struct run * p = kmem.freelist;
+    while (p!= 0) {
+        ++ans;
+        p = p->next;
+    }
+    return ans;
+
+}
+void increase(int idx) {
+    acquire(&kmem.lock);
+    if (ref[idx] < 0) panic("increase error");
+    ++ref[idx];
+    release(&kmem.lock);
+}
+
+void decrease(int idx) {
+    acquire(&kmem.lock);
+    if (ref[idx] < 1) panic("decrease error");
+    --ref[idx];
+    release(&kmem.lock);
+}
+
+int get(int idx) {
+    int c;
+    acquire(&kmem.lock);
+    c = ref[idx];
+    release(&kmem.lock);
+    if (c < 0) panic("get error");
+    return c;
 }

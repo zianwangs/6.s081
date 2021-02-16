@@ -2166,11 +2166,13 @@ sbrkfail(char *s)
       // allocate a lot of memory
       sbrk(BIG - (uint64)sbrk(0));
       write(fds[1], "x", 1);
+      printf("%d writes done\n", i);
       // sit around until killed
       for(;;) sleep(1000);
     }
-    if(pids[i] != -1)
+    if(pids[i] != -1) {
       read(fds[0], &scratch, 1);
+    }
   }
 
   // if those failed allocations freed up the pages they did allocate,
@@ -2182,6 +2184,7 @@ sbrkfail(char *s)
     kill(pids[i]);
     wait(0);
   }
+
   if(c == (char*)0xffffffffffffffffL){
     printf("%s: failed sbrk leaked memory\n", s);
     exit(1);
@@ -2193,6 +2196,7 @@ sbrkfail(char *s)
     printf("%s: fork failed\n", s);
     exit(1);
   }
+
   if(pid == 0){
     // allocate a lot of memory.
     // this should produce a page fault,
@@ -2208,6 +2212,7 @@ sbrkfail(char *s)
     printf("%s: allocate a lot of memory succeeded %d\n", s, n);
     exit(1);
   }
+
   wait(&xstatus);
   if(xstatus != -1 && xstatus != 2)
     exit(1);
