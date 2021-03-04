@@ -23,11 +23,11 @@
 #include "fs.h"
 #include "buf.h"
 
-#define NBUCKET 11 
+#define NBUCKET 13 
 
 struct {
   struct spinlock lock;
-  struct buf buf[NBUCKET][NBUF];
+  struct buf buf[NBUF];
 
   // Linked list of all buffers, through prev/next.
   // Sorted by how recently the buffer was used.
@@ -36,31 +36,33 @@ struct {
 } bcache;
 
 //struct buf * map[13];
-struct spinlock lock[NBUCKET];
+static struct spinlock locks[NBUCKET];
 
 void
 binit(void)
 {
-  struct buf *b;
 
   initlock(&bcache.lock, "bcache");
   for (int i = 0; i < NBUCKET; ++i) {
-      initlock(lock + i, "bucket");
+      initlock(locks + i, "bucket");
       printf("%d\n",i);
   }
-
+  int i = 0;
+  struct buf * b = bcache.buf, *cur_head;
   // Create linked list of buffers
-  for (int i = 0; i < NBUCKET; ++i) {
-  struct buf * cur_head = &bcache.head[i];
-  cur_head->prev = cur_head;
-  cur_head->next = cur_head;
-  for(b = bcache.buf[i]; b < bcache.buf[i] + NBUF; b++){
-    b->next = cur_head->next;
-    b->prev = cur_head;
-    initsleeplock(&b->lock, "buffer");
-    cur_head->next->prev = b;
-    cur_head->next = b;
-  }
+  while (i < NBUCKET) {
+    cur_head = &bcache.head[i++];
+    cur_head->prev = cur_head;
+    cur_head->next = cur_head;
+    int lim = i < 4 ? 3 : 2;
+    for (int j = 0; j < lim; ++j) {
+      b->next = cur_head->next;
+      b->prev = cur_head;
+      initsleeplock(&b->lock, "buffer");
+      cur_head->next->prev = b;
+      cur_head->next = b;
+      ++b;
+    }
   }
 }
 
@@ -75,11 +77,11 @@ bget(uint dev, uint blockno)
   //struct buf * bucket = map[idx];
   struct buf * cur_head = &bcache.head[idx];
   // Is the block already cached?
-  acquire(lock + idx);
+  acquire(locks + idx);
   for(b = cur_head->next; b != cur_head; b = b->next){
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
-      release(lock + idx);
+      release(locks + idx);
       acquiresleep(&b->lock);
       return b;
     }
@@ -93,10 +95,36 @@ bget(uint dev, uint blockno)
       b->blockno = blockno;
       b->valid = 0;
       b->refcnt = 1;
-      release(lock + idx);
+      release(locks + idx);
       acquiresleep(&b->lock);
       return b;
     }
+  }
+
+  for (int m = (idx + 1) % 13; m != idx; m = (m + 1) % 13) {
+    if (locks[m].locked)
+        continue;
+    acquire(locks + m);
+    struct buf * steal_head = &bcache.head[m], * s;
+    for(s = steal_head->prev; s != steal_head; s = s->prev){
+      if(s->refcnt == 0) {
+        s->dev = dev;
+        s->blockno = blockno;
+        s->valid = 0;
+        s->refcnt = 1;
+        s->next->prev = s->prev;
+        s->prev->next = s->next;
+        s->next = cur_head->next;
+        s->prev = cur_head;
+        cur_head->next->prev = s;
+        cur_head->next = s;
+        release(locks + m);
+        release(locks + idx);
+        acquiresleep(&s->lock);
+        return s;
+      }
+    }
+    release(locks + m);
   }
 
   panic("bget: no buffers");
@@ -138,7 +166,7 @@ brelse(struct buf *b)
   
   releasesleep(&b->lock);
 
-  acquire(lock + idx);
+  acquire(locks + idx);
   b->refcnt--;
   if (b->refcnt == 0) {
     b->next->prev = b->prev;
@@ -148,7 +176,7 @@ brelse(struct buf *b)
     cur_head->next->prev = b;
     cur_head->next = b;
   }
-  release(lock + idx);
+  release(locks + idx);
 }
 
 void
