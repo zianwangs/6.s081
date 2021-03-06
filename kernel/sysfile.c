@@ -15,7 +15,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
-
+static struct inode * create(char *, short, short, short);
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -113,6 +113,22 @@ sys_fstat(void)
   if(argfd(0, 0, &f) < 0 || argaddr(1, &st) < 0)
     return -1;
   return filestat(f, st);
+}
+
+uint64 sys_symlink(void) {
+    char target[MAXPATH], path[MAXPATH];
+    struct inode * ip;
+    if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+        return -1;
+    begin_op();
+    if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+        end_op();
+        return -1;
+    }
+    writei(ip, 0, (uint64)target, 0, strlen(target) + 1);
+    iunlockput(ip);
+    end_op();
+    return 0;
 }
 
 // Create the path new as a link to the same inode as old.
@@ -252,11 +268,12 @@ create(char *path, short type, short major, short minor)
   if((ip = dirlookup(dp, name, 0)) != 0){
     iunlockput(dp);
     ilock(ip);
-    if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
+    if((type == T_FILE) && (ip->type == T_FILE || ip->type == T_DEVICE))
       return ip;
     iunlockput(ip);
     return 0;
   }
+  //printf("%s\n", name);
 
   if((ip = ialloc(dp->dev, type)) == 0)
     panic("create: ialloc");
@@ -315,11 +332,35 @@ sys_open(void)
       return -1;
     }
   }
+ 
 
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();
     return -1;
+  }
+
+  if (ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
+      int max = 10;
+      int done = 0;
+      char target[MAXPATH];
+      for (int i = 0; i < max; ++i) {
+          readi(ip, 0, (uint64)target, 0, MAXPATH);
+          iunlockput(ip);
+          if ((ip = namei(target)) == 0) {
+            end_op();
+            return -1;
+          }
+          ilock(ip);
+          if (ip->type == T_FILE) {
+            done = 1;
+            break;
+          }
+      }
+      if (!done) {
+          end_op();
+          return -1;
+       }
   }
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
