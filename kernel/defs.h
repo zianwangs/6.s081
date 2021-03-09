@@ -33,6 +33,7 @@ void            fileinit(void);
 int             fileread(struct file*, uint64, int n);
 int             filestat(struct file*, uint64 addr);
 int             filewrite(struct file*, uint64, int n);
+void            filedec(struct file *);
 
 // fs.c
 void            fsinit(int);
@@ -139,6 +140,9 @@ int             argaddr(int, uint64 *);
 int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
+
+uint64          sys_munmap_helper(uint64, uint64);
+
 
 // trap.c
 extern uint     ticks;

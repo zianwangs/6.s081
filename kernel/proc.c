@@ -5,7 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-
+#include "my.h"
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -14,7 +14,7 @@ struct proc *initproc;
 
 int nextpid = 1;
 struct spinlock pid_lock;
-
+extern struct vt vmatable;
 extern void forkret(void);
 static void wakeup1(struct proc *chan);
 static void freeproc(struct proc *p);
@@ -274,6 +274,28 @@ fork(void)
     return -1;
   }
 
+  acquire(&vmatable.lock);
+  for (int i = 0; i < 16; ++i) {
+    if (vmatable.vma[i].used && vmatable.vma[i].pid == p->pid) {
+        struct ventry * cur = &vmatable.vma[i];
+        for (int j = i + 1; j < 16; ++j) {
+            if (vmatable.vma[j].used == 0) {
+                vmatable.vma[j].used = 1;
+                vmatable.vma[j].addr = cur->addr;
+                vmatable.vma[j].pid = np->pid;
+                vmatable.vma[j].fd = cur->fd;
+                vmatable.vma[j].offset = cur->offset;
+                vmatable.vma[j].f = cur->f;
+                vmatable.vma[j].length = cur->length;
+                vmatable.vma[j].prot = cur->prot;
+                vmatable.vma[j].flags = cur->flags;
+                filedup(cur->f);
+                break;
+            }
+        }
+    }
+  }
+  release(&vmatable.lock);
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
@@ -343,6 +365,15 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+  acquire(&vmatable.lock);
+  for (int i = 0; i < 16; ++i) {
+      if (vmatable.vma[i].used && vmatable.vma[i].pid == p->pid) {
+         release(&vmatable.lock);
+         sys_munmap_helper(vmatable.vma[i].addr, vmatable.vma[i].length);
+         acquire(&vmatable.lock);
+      }
+  }
+  release(&vmatable.lock);
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){

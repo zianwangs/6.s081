@@ -55,6 +55,21 @@ filedup(struct file *f)
   return f;
 }
 
+void filedec(struct file * f) {
+    acquire(&ftable.lock);
+    if(f->ref < 1)
+      panic("filedec");
+    f->ref--;
+    release(&ftable.lock);
+    if (f->ref == 0) {
+        f->type = FD_NONE;
+        begin_op();
+        iput(f->ip);
+        end_op();
+    }
+
+}
+
 // Close file f.  (Decrement ref count, close when reaches 0.)
 void
 fileclose(struct file *f)

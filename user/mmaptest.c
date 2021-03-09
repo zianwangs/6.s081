@@ -9,6 +9,16 @@
 void mmap_test();
 void fork_test();
 char buf[BSIZE];
+/*
+void *mmap(void * addr, size_t length, int prot, int flags, int fd, off_t offset) {
+
+}
+
+void munmap(void * addr, size_t length) {
+
+}
+*/
+
 
 #define MAP_FAILED ((char *) -1)
 
@@ -37,6 +47,7 @@ void
 _v1(char *p)
 {
   int i;
+
   for (i = 0; i < PGSIZE*2; i++) {
     if (i < PGSIZE + (PGSIZE/2)) {
       if (p[i] != 'A') {
@@ -128,6 +139,7 @@ mmap_test(void)
   if (close(fd) == -1)
     err("close");
   _v1(p);
+
   for (i = 0; i < PGSIZE*2; i++)
     p[i] = 'Z';
   if (munmap(p, PGSIZE*2) == -1)
@@ -163,7 +175,6 @@ mmap_test(void)
 
   // check that the mapping still works after close(fd).
   _v1(p);
-
   // write the mapped memory.
   for (i = 0; i < PGSIZE*2; i++)
     p[i] = 'Z';
@@ -215,7 +226,6 @@ mmap_test(void)
     err("mmap mmap1");
   close(fd1);
   unlink("mmap1");
-
   int fd2;
   if((fd2 = open("mmap2", O_RDWR|O_CREATE)) < 0)
     err("open mmap2");
@@ -279,7 +289,6 @@ fork_test(void)
     munmap(p1, PGSIZE); // just the first page
     exit(0); // tell the parent that the mapping looks OK.
   }
-
   int status = -1;
   wait(&status);
 
@@ -287,7 +296,6 @@ fork_test(void)
     printf("fork_test failed\n");
     exit(1);
   }
-
   // check that the parent's mappings are still there.
   _v1(p1);
   _v1(p2);

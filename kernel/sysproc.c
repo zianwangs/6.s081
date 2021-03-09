@@ -5,7 +5,101 @@
 #include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
+#include "fs.h"
+#include "file.h"
+#include "my.h"
+#include "fcntl.h"
+
+struct vt vmatable;
+
+uint64 sys_mmap(void) {
+    uint64 addr, length, offset, ret;
+    int fd, prot, flags;
+    if (argaddr(0, &addr) || argaddr(1, &length) || argint(2, &prot) || argint(3, &flags) || argint(4, &fd) || argaddr(5, &offset))
+        return -1;
+    struct proc * p = myproc();
+    if (!p->ofile[fd]->writable && (prot & PROT_WRITE) && (flags == MAP_SHARED))
+        return -1;
+    int i;
+    acquire(&vmatable.lock);
+    for (i = 0; i < 16; ++i) {
+        if (!vmatable.vma[i].used) {
+            vmatable.vma[i].used = 1;
+            break;
+        }
+    }
+    release(&vmatable.lock);
+    if (addr != 0) {
+        ret = vmatable.vma[i].addr = addr;
+    } else {
+        ret = vmatable.vma[i].addr = PGROUNDUP(p->sz);
+    }
+    p->sz += PGROUNDUP(length);
+    vmatable.vma[i].pid = p->pid;
+    vmatable.vma[i].length = length;
+    vmatable.vma[i].prot = prot;
+    vmatable.vma[i].flags = flags;
+    vmatable.vma[i].fd = fd;
+    vmatable.vma[i].f = p->ofile[fd];
+    vmatable.vma[i].offset = offset;
+    filedup(p->ofile[fd]);
+    return ret;
+}
+
+uint64 sys_munmap(void) {
+    uint64 addr, length;
+    if (argaddr(0, &addr) || argaddr(1, &length))
+        return -1;
+    return sys_munmap_helper(addr, length);
+}
+
+uint64 sys_munmap_helper(uint64 addr, uint64 length) {
+    struct proc * p = myproc();
+    struct ventry * cur;
+    int i;
+    acquire(&vmatable.lock);
+    for (i = 0; i < 16; ++i) {
+        if (vmatable.vma[i].addr == addr && vmatable.vma[i].pid == p->pid && vmatable.vma[i].used) {
+            cur = &vmatable.vma[i];
+            break;
+        }
+    }
+    release(&vmatable.lock);
+    if (i == 16)
+        return -1;
+    
+    if (length > cur->length)
+        return -1;
+    if (cur->flags == MAP_SHARED && (cur->prot & PROT_WRITE)) {
+        struct inode * ip = cur->f->ip;
+        begin_op();
+        ilock(ip);
+        writei(ip, 1, cur->addr, cur->offset, length);
+        iunlock(ip);
+        end_op();
+    }
+    int pages;
+    if (length == cur->length)
+        pages = (PGROUNDUP(addr + length) - PGROUNDDOWN(addr)) / PGSIZE;
+    else
+        pages = (PGROUNDDOWN(addr + length) - PGROUNDDOWN(addr)) / PGSIZE;
+    uvmunmap(p->pagetable, PGROUNDDOWN(cur->addr), pages, 1);
+    acquire(&vmatable.lock);
+    cur->addr += length;
+    cur->length -= length;
+    if (cur->length == 0) {
+        cur->used = 0;
+        cur->addr = 0;
+        cur->pid = 0;
+        release(&vmatable.lock);
+        filedec(cur->f);
+    } else release(&vmatable.lock);
+    return 0;
+
+}
+
 
 uint64
 sys_exit(void)

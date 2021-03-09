@@ -3,14 +3,18 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
 #include "defs.h"
-
+#include "my.h"
+#include "fcntl.h"
+#include "fs.h"
+#include "file.h"
 struct spinlock tickslock;
 uint ticks;
 
 extern char trampoline[], uservec[], userret[];
-
+extern struct vt vmatable;
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
 
@@ -67,7 +71,40 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if (r_scause() == 13 || r_scause() == 15) {
+    uint64 va = r_stval();
+    int i;
+    struct ventry * cur;
+    acquire(&vmatable.lock);
+    for (i = 0; i < 16; ++i) {
+        if (!vmatable.vma[i].used || vmatable.vma[i].pid != p->pid)
+            continue;
+        if (vmatable.vma[i].addr > va || vmatable.vma[i].addr + vmatable.vma[i].length <= va)
+            continue;
+        cur = &vmatable.vma[i];
+        break;
+    }
+    release(&vmatable.lock);
+    if (i == 16)
+        goto kill;
+    //  printf("i:%d addr:%p length:%p prot:%d flags:%d fd:%d\n", i, cur->addr, cur->length, cur->prot, cur->flags, cur->fd);
+    if ((r_scause() == 13 && !(cur->prot & PROT_READ)) || (r_scause() == 15 && ((cur->flags & MAP_SHARED) && !(cur->prot & PROT_WRITE))))
+        goto kill;
+    char * mem;
+    if ((mem = kalloc()) == (char *)-1)
+        goto kill;
+    memset(mem, 0, PGSIZE);
+    struct inode * ip = cur->f->ip;
+    ilock(ip);
+    readi(ip, 0, (uint64)mem, PGROUNDDOWN(va - cur->addr) + cur->offset, PGSIZE);
+    iunlock(ip);
+    int perm = PTE_R | PTE_W | PTE_U;
+    if (!(cur->prot & PROT_READ)) perm &= ~PTE_R;
+    if ((cur->flags & MAP_SHARED) && !(cur->prot & PROT_WRITE)) perm &= ~PTE_W;
+    if (mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) < 0)
+        goto kill;
   } else {
+kill:
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
